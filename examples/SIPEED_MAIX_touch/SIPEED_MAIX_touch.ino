@@ -8,6 +8,8 @@
 SPIClass spi_(SPI0);// MUST be SPI0 for Maix series on board LCD
 Ticker tick; /* timer for interrupt handler */
 Sipeed_ST7789 lcd(320, 240, spi_);
+static lv_disp_buf_t disp_buf;
+static lv_color_t buf[LV_HOR_RES_MAX * 10];
 TouchScreen touchscreen;
 int ledstate = 1;
 #if USE_LV_LOG != 0
@@ -21,26 +23,26 @@ void my_print(lv_log_level_t level, const char * file, uint32_t line, const char
 #endif
 
 /* Display flushing */
-void disp_flush(int32_t x1, int32_t y1, int32_t x2, int32_t y2, const lv_color_t *color_p) {
-  int32_t w = x2-x1+1;
-  int32_t h = y2-y1+1;
+void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
+  int32_t w = area->x2-area->x1+1;
+  int32_t h = area->y2-area->y1+1;
   int32_t x,y;
   int32_t i=0;
   uint16_t* data = (uint16_t*)malloc( w*h*2 );
   uint16_t* pixels = data;
 
-  for(y=y1; y<=y2; ++y)
+  for(y=area->y1; y<=area->y2; ++y)
   {
-    for(x=x1; x<=x2; ++x)
+    for(x=area->x1; x<=area->x2; ++x)
     {
-      pixels[i++]= (color_p->red<<3) | (color_p->blue<<8) | (color_p->green>>3&0x07 | color_p->green<<13);
+      pixels[i++]= (color_p->ch.red<<3) | (color_p->ch.blue<<8) | (color_p->ch.green>>3&0x07 | color_p->ch.green<<13);
       // or LV_COLOR_16_SWAP = 1
        ++color_p;
     }
   }
-  lcd.drawImage((uint16_t)x1, (uint16_t)y1, (uint16_t)w, (uint16_t)h, data);
+  lcd.drawImage((uint16_t)area->x1, (uint16_t)area->y1, (uint16_t)w, (uint16_t)h, data);
   free(data);
-  lv_flush_ready(); /* tell lvgl that flushing is done */
+  lv_disp_flush_ready(disp); /* tell lvgl that flushing is done */
 }
 
 /* Interrupt driven periodic handler */
@@ -51,7 +53,7 @@ static void lv_tick_handler(void)
 }
 
 /* Reading input device  */
-bool read_touchscreen(lv_indev_data_t * data)
+bool read_touchscreen(lv_indev_drv_t * drv, lv_indev_data_t * data)
 {
   int status, x, y;
   touchscreen.read();
@@ -75,17 +77,14 @@ bool read_touchscreen(lv_indev_data_t * data)
   return false;
 }
 
-static lv_res_t btn_click_action(lv_obj_t * btn)
+static void event_handler(lv_obj_t * btn, lv_event_t event)
 {
-    uint8_t id = lv_obj_get_free_num(btn);
-    
-    ledstate = !ledstate;
-    digitalWrite(LED_BUILTIN,ledstate);
-
-    /* The button is released.
-     * Make something here */
-
-    return LV_RES_OK; /*Return OK if the button is not deleted*/
+  if(event == LV_EVENT_CLICKED) {
+    Serial.printf("Clicked\n");
+  }
+  else if(event == LV_EVENT_VALUE_CHANGED) {
+    Serial.printf("Toggled\n");
+  }
 }
 
 void setup() {
@@ -100,10 +99,14 @@ void setup() {
   lv_log_register_print(my_print); /* register print function for debugging */
 #endif
 
+  lv_disp_buf_init(&disp_buf, buf, NULL, LV_HOR_RES_MAX * 10);
   /*Initialize the display*/
   lv_disp_drv_t disp_drv;
   lv_disp_drv_init(&disp_drv);
-  disp_drv.disp_flush = disp_flush;
+  disp_drv.hor_res = 320;
+  disp_drv.ver_res = 240;
+  disp_drv.flush_cb = my_disp_flush;
+  disp_drv.buffer = &disp_buf;
   lv_disp_drv_register(&disp_drv);
 
 
@@ -111,48 +114,31 @@ void setup() {
   lv_indev_drv_t indev_drv;
   lv_indev_drv_init(&indev_drv);
   indev_drv.type = LV_INDEV_TYPE_POINTER;
-  indev_drv.read = read_touchscreen;
-  lv_indev_drv_register(&indev_drv);
+  indev_drv.read_cb = read_touchscreen;
+  lv_indev_t * my_indev = lv_indev_drv_register(&indev_drv);
 
   /*Initialize the graphics library's tick*/
   tick.attach_ms(LVGL_TICK_PERIOD, lv_tick_handler);
 
   /* Create simple label */
-  /*Create a title label*/
-  lv_obj_t * label = lv_label_create(lv_scr_act(), NULL);
-  lv_label_set_text(label, "Default buttons");
-  lv_obj_align(label, NULL, LV_ALIGN_IN_TOP_MID, 0, 5);
+  lv_obj_t * label;
 
-  /*Create a normal button*/
   lv_obj_t * btn1 = lv_btn_create(lv_scr_act(), NULL);
-  lv_cont_set_fit(btn1, true, true); /*Enable resizing horizontally and vertically*/
-  lv_obj_align(btn1, label, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-  lv_obj_set_free_num(btn1, 1);   /*Set a unique number for the button*/
-  lv_btn_set_action(btn1, LV_BTN_ACTION_CLICK, btn_click_action);
+  lv_obj_set_event_cb(btn1, event_handler);
+  lv_obj_align(btn1, NULL, LV_ALIGN_CENTER, 0, -40);
 
-  /*Add a label to the button*/
   label = lv_label_create(btn1, NULL);
-  lv_label_set_text(label, "Normal");
+  lv_label_set_text(label, "Button");
 
-  /*Copy the button and set toggled state. (The release action is copied too)*/
-  lv_obj_t * btn2 = lv_btn_create(lv_scr_act(), btn1);
-  lv_obj_align(btn2, btn1, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-  lv_btn_set_state(btn2, LV_BTN_STATE_TGL_REL);  /*Set toggled state*/
-  lv_obj_set_free_num(btn2, 2);               /*Set a unique number for the button*/
+  lv_obj_t * btn2 = lv_btn_create(lv_scr_act(), NULL);
+  lv_obj_set_event_cb(btn2, event_handler);
+  lv_obj_align(btn2, NULL, LV_ALIGN_CENTER, 0, 40);
+  lv_btn_set_toggle(btn2, true);
+  lv_btn_toggle(btn2);
+  lv_btn_set_fit2(btn2, LV_FIT_NONE, LV_FIT_TIGHT);
 
-  /*Add a label to the toggled button*/
   label = lv_label_create(btn2, NULL);
   lv_label_set_text(label, "Toggled");
-
-  /*Copy the button and set inactive state.*/
-  lv_obj_t * btn3 = lv_btn_create(lv_scr_act(), btn1);
-  lv_obj_align(btn3, btn2, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-  lv_btn_set_state(btn3, LV_BTN_STATE_INA);   /*Set inactive state*/
-  lv_obj_set_free_num(btn3, 3);               /*Set a unique number for the button*/
-
-  /*Add a label to the inactive button*/
-  label = lv_label_create(btn3, NULL);
-  lv_label_set_text(label, "Inactive");
 }
 
 

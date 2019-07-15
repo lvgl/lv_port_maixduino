@@ -20,26 +20,26 @@ void my_print(lv_log_level_t level, const char * file, uint32_t line, const char
 #endif
 
 /* Display flushing */
-void disp_flush(int32_t x1, int32_t y1, int32_t x2, int32_t y2, const lv_color_t *color_p) {
-  int32_t w = x2-x1+1;
-  int32_t h = y2-y1+1;
+void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
+  int32_t w = area->x2-area->x1+1;
+  int32_t h = area->y2-area->y1+1;
   int32_t x,y;
   int32_t i=0;
   uint16_t* data = (uint16_t*)malloc( w*h*2 );
   uint16_t* pixels = data;
 
-  for(y=y1; y<=y2; ++y)
+  for(y=area->y1; y<=area->y2; ++y)
   {
-    for(x=x1; x<=x2; ++x)
+    for(x=area->x1; x<=area->x2; ++x)
     {
-      pixels[i++]= (color_p->red<<3) | (color_p->blue<<8) | (color_p->green>>3&0x07 | color_p->green<<13);
+      pixels[i++]= (color_p->ch.red<<3) | (color_p->ch.blue<<8) | (color_p->ch.green>>3&0x07 | color_p->ch.green<<13);
       // or LV_COLOR_16_SWAP = 1
        ++color_p;
     }
   }
-  lcd.drawImage((uint16_t)x1, (uint16_t)y1, (uint16_t)w, (uint16_t)h, data);
+  lcd.drawImage((uint16_t)area->x1, (uint16_t)area->y1, (uint16_t)w, (uint16_t)h, data);
   free(data);
-  lv_flush_ready(); /* tell lvgl that flushing is done */
+  lv_disp_flush_ready(disp); /* tell lvgl that flushing is done */
 }
 
 /* Interrupt driven periodic handler */
@@ -74,6 +74,7 @@ void setup() {
   lv_log_register_print(my_print); /* register print function for debugging */
 #endif
 
+  lv_disp_buf_init(&disp_buf, buf, NULL, LV_HOR_RES_MAX * 10);
   /*Initialize the display*/
   lv_disp_drv_t disp_drv;
   lv_disp_drv_init(&disp_drv);
@@ -96,7 +97,7 @@ void setup() {
 
   /* Create simple label */
   lv_obj_t *label = lv_label_create(lv_scr_act(), NULL);
-  lv_label_set_text(label, "Hello Arduino! (V6.0)");
+  lv_label_set_text(label, "Hello Maixduino! (V6.0)");
   lv_obj_align(label, NULL, LV_ALIGN_CENTER, 0, 0);
 }
 
