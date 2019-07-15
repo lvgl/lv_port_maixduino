@@ -7,7 +7,8 @@
 SPIClass spi_(SPI0);// MUST be SPI0 for Maix series on board LCD
 Ticker tick; /* timer for interrupt handler */
 Sipeed_ST7789 lcd(320, 240, spi_);
-
+static lv_disp_buf_t disp_buf;
+static lv_color_t buf[LV_HOR_RES_MAX * 10];
 #if USE_LV_LOG != 0
 /* Serial debugging */
 void my_print(lv_log_level_t level, const char * file, uint32_t line, const char * dsc)
@@ -49,10 +50,9 @@ static void lv_tick_handler(void)
 }
 
 /* Reading input device (simulated encoder here) */
-bool read_encoder(lv_indev_data_t * data)
+bool read_encoder(lv_indev_drv_t * indev, lv_indev_data_t * data)
 {
   static int32_t last_diff = 0;
-
   int32_t diff = 0; /* Dummy - no movement */
   int btn_state = LV_INDEV_STATE_REL; /* Dummy - no press */
 
@@ -77,7 +77,10 @@ void setup() {
   /*Initialize the display*/
   lv_disp_drv_t disp_drv;
   lv_disp_drv_init(&disp_drv);
-  disp_drv.disp_flush = disp_flush;
+  disp_drv.hor_res = 320;
+  disp_drv.ver_res = 240;
+  disp_drv.flush_cb = my_disp_flush;
+  disp_drv.buffer = &disp_buf;
   lv_disp_drv_register(&disp_drv);
 
 
@@ -85,7 +88,7 @@ void setup() {
   lv_indev_drv_t indev_drv;
   lv_indev_drv_init(&indev_drv);
   indev_drv.type = LV_INDEV_TYPE_ENCODER;
-  indev_drv.read = read_encoder;
+  indev_drv.read_cb = read_encoder;
   lv_indev_drv_register(&indev_drv);
 
   /*Initialize the graphics library's tick*/
@@ -93,7 +96,7 @@ void setup() {
 
   /* Create simple label */
   lv_obj_t *label = lv_label_create(lv_scr_act(), NULL);
-  lv_label_set_text(label, "Hello Maixduino!");
+  lv_label_set_text(label, "Hello Arduino! (V6.0)");
   lv_obj_align(label, NULL, LV_ALIGN_CENTER, 0, 0);
 }
 
